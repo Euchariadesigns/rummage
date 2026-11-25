@@ -123,6 +123,7 @@ function ensurePile() {
     onCover: (cover, target, inBag) => updateWarmth(cover, false, inBag),
     onCount: (inside, out) => { updateBagMeta(inside, out); updateShakeButton(inside, out); }
   });
+  if (/[?&]debug\b/.test(location.search)) window.__pile = pile;
   return pile;
 }
 

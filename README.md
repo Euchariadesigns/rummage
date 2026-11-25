@@ -13,7 +13,7 @@ A search with no search bar. You find things the way you would at home: open a b
 - **Looking for something.** The card at the bottom names one piece hidden in the pile. Its meter goes from *Buried deep* to *Right on top* as you uncover it. Pull it out and let go gently, and it opens for a proper look. Leave the pile alone for a few seconds and it rustles under the others. Tap the card to look for something else.
 - **Shake** the bag and everything inside jumps and lands in a new order. When the bag is nearly empty, the button becomes **Refill** and tips everything on the floor back in.
 
-Buried pieces sit in shadow and come out of the dark as you uncover them. The pile uses real physics: [three.js](https://threejs.org) draws it and [Rapier](https://rapier.rs) moves it.
+Every piece is simulated cloth: a mesh of a few hundred points held together by springs, so it hangs from where you hold it, flaps when you fling it, and crumples and drapes over whatever it lands on. The bag is a soft woven sack with puffed sides, piped corners, a zip and handles. Buried pieces sit in shadow and come out of the dark as you uncover them. [three.js](https://threejs.org) draws it; the cloth physics is in `js/pile3d.js`.
 
 ## The clothes
 
@@ -45,7 +45,7 @@ Then open http://localhost:8000.
 - `index.html`: screens (bags, pile, pick-up card, basket)
 - `css/styles.css`: styles, light and dark
 - `js/app.js`: screens, the thing you're looking for, basket
-- `js/pile3d.js`: the 3D bag and its physics
+- `js/pile3d.js`: the 3D bag and the cloth simulation
 - `js/looks.js`: loads each piece's image and works out its shape and colours
 - `js/data.js`: bags and the sample wardrobe
 - `js/garments.js`: the sample drawings

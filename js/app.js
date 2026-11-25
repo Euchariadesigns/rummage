@@ -33,7 +33,7 @@ const el = {
   rim: $('rim'), stage: $('stage'), canvas: $('pileCanvas'), hint: $('gestureHint'), loading: $('stageLoading'),
   target: $('targetCard'), targetThumb: $('targetThumb'), targetLabel: $('targetLabel'),
   targetName: $('targetName'), warmth: $('warmth'), warmthText: $('warmthText'),
-  shake: $('shakeBtn'),
+  shake: $('shakeBtn'), shakeLabel: $('shakeLabel'), heldTag: $('heldTag'),
   inspect: $('inspect'), inspectBackdrop: $('inspectBackdrop'), inspectArt: $('inspectArt'),
   inspectEyebrow: $('inspectEyebrow'), inspectName: $('inspectName'), inspectSpecs: $('inspectSpecs'),
   toss: $('tossBtn'), keep: $('keepBtn'),
@@ -58,7 +58,7 @@ let bag = null;
 let opening = false;
 let inspecting = null, busy = false;
 let lastTouch = 0, lastTwitch = 0, twitchUntil = 0, warmthLevel = 0;
-let hintSeen = store.get('rummage.hint3d') === '1';
+let hintSeen = store.get('rummage.hint.throw') === '1';
 let hintTimer = 0, toastTimer = 0;
 const WARMTH = ['', 'Buried deep', 'Under a few things', 'Peeking out', 'Right on top'];
 
@@ -111,10 +111,17 @@ function ensurePile() {
   pile = new Pile(el.canvas, {
     blocked: () => !!inspecting || busy,
     onTouch: () => { lastTouch = performance.now(); },
-    onLift: () => { buzz(6); dismissHint(); },
-    onThrow: speed => { if (speed > 8) buzz(10); },
+    onLift: piece => { buzz(6); dismissHint(); showHeld(piece); },
+    onHoldMove: (piece, x, y) => moveHeld(x, y),
+    onRelease: (piece, speed) => {
+      hideHeld();
+      if (speed > 8) buzz(10);
+      // pulled the thing you wanted out and let go gently: take a proper look at it
+      if (bag && bag.target === piece.item && !bag.targetFound && speed < 3) openInspect(piece);
+    },
     onTap: piece => openInspect(piece),
-    onCover: cover => updateWarmth(cover)
+    onCover: (cover, target, inBag) => updateWarmth(cover, false, inBag),
+    onCount: (inside, out) => { updateBagMeta(inside, out); updateShakeButton(inside, out); }
   });
   return pile;
 }
@@ -148,7 +155,8 @@ async function openBag(b) {
     }
     const looks = await Promise.all(order.map(lookFor));
     if (bag !== b) return;
-    await pile.open(b, looks, b.saved || null);
+    const floor = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ECEBE7';
+    await pile.open(b, looks, b.saved || null, floor);
     if (bag !== b) return;
     pile.targetId = b.target && !b.target.kept ? b.target.id : null;
     if (!b.target && pile.count) setTimeout(() => pickTarget(false), 1200);
@@ -182,7 +190,9 @@ function closeBag() {
 // ---------- what you're looking for ----------
 function pickTarget(announce) {
   if (!bag || !pile) return;
-  const pool = pile.pieces.filter(p => !p.hidden && p.item !== bag.target);
+  const others = pile.pieces.filter(p => !p.hidden && p.item !== bag.target);
+  const stillIn = others.filter(p => pile.inBag(p));
+  const pool = stillIn.length ? stillIn : others;
   if (!pool.length) return;
   const buried = pool.filter(p => p.cover > 0.5);
   const from = buried.length ? buried : pool;
@@ -219,18 +229,50 @@ function updateDock() {
   } else {
     el.targetLabel.textContent = 'Looking for';
     const p = pile && pile.find(t.id);
-    if (p) updateWarmth(p.cover, true);
+    if (p) updateWarmth(p.cover, true, pile.inBag(p));
   }
 }
 
-function updateWarmth(cover, force) {
+function updateWarmth(cover, force, inBag = true) {
   if (!bag || !bag.target || bag.targetFound) return;
-  const lvl = cover > 0.7 ? 1 : cover > 0.4 ? 2 : cover > 0.1 ? 3 : 4;
+  const lvl = !inBag ? 5 : cover > 0.7 ? 1 : cover > 0.4 ? 2 : cover > 0.1 ? 3 : 4;
   if (lvl === warmthLevel && !force) return;
   if (warmthLevel && lvl > warmthLevel) buzz(4);
   warmthLevel = lvl;
-  el.warmth.dataset.level = String(lvl);
-  if (performance.now() > twitchUntil) el.warmthText.textContent = WARMTH[lvl];
+  el.warmth.dataset.level = String(Math.min(4, lvl));
+  if (performance.now() > twitchUntil) {
+    el.warmthText.textContent = lvl === 5 ? 'You threw it out. It’s on the floor' : WARMTH[lvl];
+  }
+}
+
+// ---------- the piece in your hand ----------
+let heldRect = null;
+function showHeld(piece) {
+  heldRect = el.stage.getBoundingClientRect();
+  const isTarget = bag && bag.target === piece.item && !bag.targetFound;
+  el.heldTag.classList.toggle('is-target', !!isTarget);
+  el.heldTag.textContent = isTarget ? `That’s it! ${piece.item.name}` : piece.item.name;
+  el.heldTag.hidden = false;
+  if (isTarget) buzz([8, 40, 8]);
+}
+
+function moveHeld(x, y) {
+  if (el.heldTag.hidden || !heldRect) return;
+  el.heldTag.style.transform = `translate(${Math.round(x - heldRect.left)}px, ${Math.round(y - heldRect.top)}px) translate(-50%, -100%)`;
+}
+
+function hideHeld() {
+  el.heldTag.hidden = true;
+}
+
+// Shake while there's a pile; once it's nearly all on the floor, tip it back in
+let refillMode = false;
+function updateShakeButton(inside, out) {
+  const want = inside <= 2 && out > 0;
+  if (want === refillMode) return;
+  refillMode = want;
+  el.shakeLabel.textContent = want ? 'Refill' : 'Shake';
+  el.shake.setAttribute('aria-label', want ? 'Put everything back in the bag' : 'Shake the bag');
 }
 
 /** Leave the pile alone for a while and the thing you want rustles under the others. */
@@ -239,7 +281,7 @@ setInterval(() => {
   const now = performance.now();
   if (now - lastTouch < 7000 || now - lastTwitch < 7000) return;
   const p = pile.find(bag.target.id);
-  if (!p || p.hidden || p.cover < 0.3) return;
+  if (!p || p.hidden || p.cover < 0.3 || !pile.inBag(p)) return;
   lastTwitch = now;
   pile.twitch(p);
   twitchUntil = now + 2000;
@@ -372,6 +414,11 @@ function burst(colors) {
 function shakeBag() {
   if (!bag || !pile || inspecting || opening || !pile.count) return;
   lastTouch = performance.now();
+  if (refillMode) {
+    const n = pile.refill();
+    if (n) toast(`${n} ${n === 1 ? 'piece' : 'pieces'} back in the bag`);
+    return;
+  }
   pile.shake();
   el.rim.classList.remove('shaking');
   void el.rim.offsetWidth;
@@ -386,11 +433,11 @@ function updateCounts() {
   el.closetBasketCount.textContent = basket.length;
 }
 
-function updateBagMeta() {
+function updateBagMeta(inside, out) {
   if (!bag || !pile) return;
-  const n = pile.count;
+  if (inside === undefined) { inside = pile.inBagCount; out = pile.count - inside; }
   const kept = bag.items.filter(i => i.kept).length;
-  el.bagMeta.textContent = `${n} ${n === 1 ? 'piece' : 'pieces'}${kept ? ` · ${kept} kept` : ''}`;
+  el.bagMeta.textContent = `${inside} in the bag${out ? ` · ${out} on the floor` : ''}${kept ? ` · ${kept} kept` : ''}`;
 }
 
 function bumpBasket() {
@@ -457,7 +504,7 @@ function dismissHint() {
   if (el.hint.hidden || el.hint.classList.contains('gone')) return;
   el.hint.classList.add('gone');
   hintSeen = true;
-  store.set('rummage.hint3d', '1');
+  store.set('rummage.hint.throw', '1');
   setTimeout(() => { el.hint.hidden = true; }, 450);
 }
 

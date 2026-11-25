@@ -1,17 +1,23 @@
-/* The inside of the bag: a real-physics pile you look down into.
-   three.js draws it, Rapier moves it. Pieces are thin cloth-like slabs shaped
-   from their photo's cutout, so they stack, slide, tumble and fall. */
+/* The bag on the floor: a real-physics pile you look down into.
+   Pull a piece up out of the bag, look at it, fling it out onto the floor, dig deeper.
+   three.js draws it, Rapier moves it. Pieces are thin cloth-like slabs shaped from their
+   photo's cutout, so they stack, slide, tumble and fall. */
 import * as THREE from 'three';
 import RAPIER from 'rapier';
 
 const GRAVITY = -30;
 const THICK = 0.16;          // how thick a piece of cloth is, in world units
-const WALL_H = 3.6;          // depth of the bag
+const WALL_H = 3.4;          // height of the bag's sides
+const WALL_T = 0.22;         // thickness of the bag's sides
+const LIFT_H = WALL_H + 1.9; // where a picked-up piece is held: up out of the bag, toward you
 const FOV = 38;
 const ALPHA_CUT = 115;       // 0–255: below this a pixel is "not cloth"
 const HOLD_K = 220;          // spring from your fingertip to the piece
 const HOLD_C = 20;           // damping on that spring
 const STEP = 1 / 60;
+const BAG_W = 4.2;           // bag width; its length follows the screen
+const SIDE = 2.0;            // floor showing beside the bag, left and right
+const ENDS = 2.6;            // floor showing above and below the bag
 
 let ready = null;
 export function prepare() {
@@ -27,7 +33,7 @@ const gauss = () => {
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-function weaveTexture(bag, renderer) {
+function weaveCanvas(bag) {
   const bands = bag.weave;
   const period = bands.reduce((s, [, h]) => s + h, 0);
   const c = document.createElement('canvas');
@@ -44,11 +50,39 @@ function weaveTexture(bag, renderer) {
   for (let yy = 0; yy < c.height; yy += 4) {
     for (let xx = (yy / 4) % 2 ? 2 : 0; xx < c.width; xx += 5) g.fillRect(xx, yy, 2, 1.5);
   }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  return tex;
+  return c;
+}
+
+function texture(canvas, renderer, repeatX, repeatY) {
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  t.repeat.set(repeatX, repeatY);
+  return t;
+}
+
+/** The room floor around the bag: soft plaster with a little grain, tinted to the page. */
+function floorCanvas(tint) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = tint;
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256, r = 30 + Math.random() * 70;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    const dark = Math.random() < 0.5;
+    grd.addColorStop(0, dark ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.05)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 256, 256);
+  }
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+  }
+  return c;
 }
 
 export class Pile {
@@ -62,16 +96,15 @@ export class Pile {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0x000000, 10, 20);
-    this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 60);
+    this.camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 80);
     this.camera.up.set(0, 0, -1);
     this.raycaster = new THREE.Raycaster();
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x30303a, 1.35);
-    const sun = new THREE.DirectionalLight(0xfff6ea, 2.1);
-    sun.position.set(-3.5, 22, -6);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x3a3a44, 1.3);
+    const sun = new THREE.DirectionalLight(0xfff4e6, 2.2);
+    sun.position.set(-6, 24, -9); // a window up and to the left
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.03;
     sun.shadow.radius = 3;
@@ -89,6 +122,7 @@ export class Pile {
     this.coverAt = 0;
     this.coverDirty = true;
     this.targetId = null;
+    this.counts = '';
     this._loop = this._loop.bind(this);
 
     this._tmpV = new THREE.Vector3();
@@ -105,19 +139,20 @@ export class Pile {
 
   // ---------- lifecycle ----------
 
-  async open(bag, looks, snapshot) {
+  async open(bag, looks, snapshot, floorTint = '#e4e1da') {
     await prepare();
     this.close();
     this.bag = bag;
     const w = this.canvas.clientWidth || 360, h = this.canvas.clientHeight || 640;
     const aspect = w / h;
-    this.BX = 4.8;
-    this.BZ = clamp(this.BX / aspect, 4.8, 12);
+    // the visible floor; the bag sits in the middle of it
+    this.VW = BAG_W + SIDE * 2;
+    this.VH = this.VW / aspect;
+    this.BX = BAG_W;
+    this.BZ = clamp(this.VH - ENDS * 2, 4.6, 12);
 
-    const interior = new THREE.Color(bag.interior);
-    this.scene.background = interior;
-    this.scene.fog.color.copy(interior);
-    this._buildBag(bag);
+    this.scene.background = new THREE.Color(floorTint);
+    this._buildBag(bag, floorTint);
 
     this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
     this.world.timestep = STEP;
@@ -130,6 +165,7 @@ export class Pile {
     });
     this.kick = 90;
     this.coverDirty = true;
+    this.counts = '';
     if (!this.raf) {
       this.last = performance.now();
       this.raf = requestAnimationFrame(this._loop);
@@ -145,8 +181,8 @@ export class Pile {
     for (const m of this.bagMeshes) {
       this.scene.remove(m);
       m.geometry.dispose();
-      if (m.material.map) m.material.map.dispose();
-      m.material.dispose();
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) { if (mat.map) mat.map.dispose(); mat.dispose(); }
     }
     this.bagMeshes = [];
     if (this.world) { this.world.free(); this.world = null; }
@@ -157,17 +193,14 @@ export class Pile {
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    if (this.BX) {
-      // fit the mouth of the bag to the screen; the floor sits deeper, so it looks smaller
+    if (this.VW) {
+      // fit the floor around the bag to the screen; the bag's mouth is closer, so it looks bigger
       const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-      const d = Math.max((this.BZ / 2) / t, (this.BX / 2) / (t * this.camera.aspect));
-      this.camY = WALL_H + d;
-      this.camera.position.set(0, this.camY, 0);
+      const d = Math.max((this.VH / 2) / t, (this.VW / 2) / (t * this.camera.aspect));
+      this.camY = d;
+      this.camera.position.set(0, d, 0);
       this.camera.lookAt(0, 0, 0);
-      this.camera.far = this.camY + 10;
-      // deeper in the bag is darker; anything lifted toward you comes out of the dark
-      this.scene.fog.near = d + 2.0;
-      this.scene.fog.far = d + 9.0;
+      this.camera.far = d + 10;
     }
     this.camera.updateProjectionMatrix();
     this.kick = Math.max(this.kick, 2);
@@ -187,36 +220,35 @@ export class Pile {
     return this.pieces.filter(p => !p.hidden).length;
   }
 
+  /** Is this piece still in the bag (rather than out on the floor)? */
+  inBag(p) {
+    const t = p.body.translation();
+    return Math.abs(t.x) < this.BX / 2 && Math.abs(t.z) < this.BZ / 2;
+  }
+
+  get inBagCount() {
+    return this.pieces.filter(p => !p.hidden && this.inBag(p)).length;
+  }
+
   find(id) {
     return this.pieces.find(p => p.item.id === id) || null;
   }
 
   // ---------- building ----------
 
-  _buildBag(bag) {
-    const { BX, BZ } = this;
-    const tex = weaveTexture(bag, this.renderer);
+  _buildBag(bag, floorTint) {
+    const { BX, BZ, VW, VH } = this;
+    const add = m => { this.scene.add(m); this.bagMeshes.push(m); return m; };
+    const weave = weaveCanvas(bag);
 
-    const wall = (len, rotY, x, z) => {
-      const geo = new THREE.PlaneGeometry(len, WALL_H, 1, 1);
-      const pos = geo.attributes.position;
-      const colors = [];
-      for (let i = 0; i < pos.count; i++) {
-        const k = 0.32 + 0.68 * ((pos.getY(i) + WALL_H / 2) / WALL_H); // darker toward the bottom
-        colors.push(k, k, k);
-      }
-      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      const map = tex.clone();
-      map.repeat.set(len / 1.1, WALL_H / 1.7);
-      map.needsUpdate = true;
-      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 1 }));
-      mesh.rotation.y = rotY;
-      mesh.position.set(x, WALL_H / 2, z);
-      mesh.receiveShadow = true;
-      return mesh;
-    };
+    // room floor
+    const floor = add(new THREE.Mesh(
+      new THREE.PlaneGeometry(VW + 8, VH + 8).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ map: texture(floorCanvas(floorTint), this.renderer, (VW + 8) / 6, (VH + 8) / 6), roughness: 1 })
+    ));
+    floor.receiveShadow = true;
 
-    // the bottom of the bag: plain lining with a faint weave
+    // bottom of the bag: plain lining with a faint weave
     const fc = document.createElement('canvas');
     fc.width = fc.height = 64;
     const fg = fc.getContext('2d');
@@ -224,54 +256,110 @@ export class Pile {
     fg.fillRect(0, 0, 64, 64);
     fg.fillStyle = 'rgba(255,255,255,0.06)';
     for (let yy = 0; yy < 64; yy += 4) for (let xx = (yy / 4) % 2 ? 2 : 0; xx < 64; xx += 5) fg.fillRect(xx, yy, 2, 1.5);
-    const floorMap = new THREE.CanvasTexture(fc);
-    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
-    floorMap.colorSpace = THREE.SRGBColorSpace;
-    floorMap.repeat.set(BX / 0.5, BZ / 0.5);
-    const floor = new THREE.Mesh(
+    const lining = add(new THREE.Mesh(
       new THREE.PlaneGeometry(BX, BZ).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ map: floorMap, roughness: 1 })
-    );
-    floor.receiveShadow = true;
+      new THREE.MeshStandardMaterial({ map: texture(fc, this.renderer, BX / 0.5, BZ / 0.5), roughness: 1 })
+    ));
+    lining.position.y = 0.02;
+    lining.receiveShadow = true;
 
-    this.bagMeshes = [
-      floor,
-      wall(BZ, Math.PI / 2, -BX / 2, 0),
-      wall(BZ, -Math.PI / 2, BX / 2, 0),
-      wall(BX, 0, 0, -BZ / 2),
-      wall(BX, Math.PI, 0, BZ / 2)
-    ];
-    for (const m of this.bagMeshes) this.scene.add(m);
+    // the sides: woven, darker toward the bottom inside
+    const side = (len, rotY, x, z) => {
+      const geo = new THREE.BoxGeometry(len + WALL_T * 2, WALL_H, WALL_T, 1, 1, 1);
+      const pos = geo.attributes.position, colors = [];
+      for (let i = 0; i < pos.count; i++) {
+        const k = 0.34 + 0.66 * ((pos.getY(i) + WALL_H / 2) / WALL_H);
+        colors.push(k, k, k);
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      const mesh = add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        map: texture(weave, this.renderer, (len + WALL_T * 2) / 1.1, WALL_H / 1.7), vertexColors: true, roughness: 1
+      })));
+      mesh.rotation.y = rotY;
+      mesh.position.set(x, WALL_H / 2, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    };
+    side(BZ, Math.PI / 2, -BX / 2 - WALL_T / 2, 0);
+    side(BZ, Math.PI / 2, BX / 2 + WALL_T / 2, 0);
+    side(BX, 0, 0, -BZ / 2 - WALL_T / 2);
+    side(BX, 0, 0, BZ / 2 + WALL_T / 2);
+
+    // the mouth: an open zip running round the top edge
+    const zc = document.createElement('canvas');
+    zc.width = 64; zc.height = 16;
+    const zg = zc.getContext('2d');
+    zg.fillStyle = '#1d1d21';
+    zg.fillRect(0, 0, 64, 16);
+    zg.fillStyle = '#b9b4aa';
+    for (let x = 0; x < 64; x += 4) { zg.fillRect(x, 5, 2, 3); zg.fillRect(x + 2, 8, 2, 3); }
+    const zipMat = (len, alongX) => new THREE.MeshStandardMaterial({
+      map: (() => {
+        if (alongX) return texture(zc, this.renderer, len / 0.35, 1);
+        const t = texture(zc, this.renderer, 1, len / 0.35);
+        t.center.set(0.5, 0.5);
+        t.rotation = Math.PI / 2;
+        return t;
+      })(),
+      roughness: 0.6, metalness: 0.2
+    });
+    const rim = (lx, lz, x, z) => {
+      const alongX = lx > lz;
+      const m = add(new THREE.Mesh(new THREE.BoxGeometry(lx, 0.08, lz), zipMat(Math.max(lx, lz), alongX)));
+      m.position.set(x, WALL_H + 0.04, z);
+      m.castShadow = true;
+    };
+    rim(WALL_T + 0.02, BZ + WALL_T * 2, -BX / 2 - WALL_T / 2, 0);
+    rim(WALL_T + 0.02, BZ + WALL_T * 2, BX / 2 + WALL_T / 2, 0);
+    rim(BX + WALL_T * 2, WALL_T + 0.02, 0, -BZ / 2 - WALL_T / 2);
+    rim(BX + WALL_T * 2, WALL_T + 0.02, 0, BZ / 2 + WALL_T / 2);
+
+    // handles, flopped over the sides onto the floor
+    const strapMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(bag.thread), roughness: 0.85 });
+    for (const s of [-1, 1]) {
+      const strap = add(new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.075, 8, 28, Math.PI), strapMat));
+      strap.rotation.set(-Math.PI / 2, 0, s < 0 ? Math.PI / 2 : -Math.PI / 2);
+      strap.scale.set(1, 1.35, 1);
+      strap.position.set(s * (BX / 2 + WALL_T), 0.08, 0);
+      strap.castShadow = true;
+    }
 
     const sc = this.sun.shadow.camera;
-    sc.left = -BX / 2 - 1; sc.right = BX / 2 + 1;
-    sc.top = BZ / 2 + 1; sc.bottom = -BZ / 2 - 1;
-    sc.near = 5; sc.far = 40;
+    sc.left = -VW / 2 - 2; sc.right = VW / 2 + 2;
+    sc.top = VH / 2 + 2; sc.bottom = -VH / 2 - 2;
+    sc.near = 5; sc.far = 50;
     sc.updateProjectionMatrix();
-    tex.dispose();
   }
 
   _buildWalls() {
-    const { BX, BZ } = this;
+    const { BX, BZ, VW, VH } = this;
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    const box = (hx, hy, hz, x, y, z) => this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, y, z).setFriction(0.9), body);
-    box(BX / 2 + 1, 0.5, BZ / 2 + 1, 0, -0.5, 0);
-    box(0.5, 8, BZ / 2 + 1, -BX / 2 - 0.5, 8, 0);
-    box(0.5, 8, BZ / 2 + 1, BX / 2 + 0.5, 8, 0);
-    box(BX / 2 + 1, 8, 0.5, 0, 8, -BZ / 2 - 0.5);
-    box(BX / 2 + 1, 8, 0.5, 0, 8, BZ / 2 + 0.5);
-    box(BX / 2 + 1, 0.5, BZ / 2 + 1, 0, WALL_H + 4.5, 0); // lid, so nothing flies out at you
+    const box = (hx, hy, hz, x, y, z, friction = 0.9) => this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, y, z).setFriction(friction), body);
+    // floor of the room (the bag's bottom is the same floor)
+    box(VW, 0.5, VH, 0, -0.5, 0);
+    // the bag's four sides: solid from both faces, open at the top
+    box(WALL_T / 2, WALL_H / 2, BZ / 2 + WALL_T, -BX / 2 - WALL_T / 2, WALL_H / 2, 0, 0.6);
+    box(WALL_T / 2, WALL_H / 2, BZ / 2 + WALL_T, BX / 2 + WALL_T / 2, WALL_H / 2, 0, 0.6);
+    box(BX / 2 + WALL_T, WALL_H / 2, WALL_T / 2, 0, WALL_H / 2, -BZ / 2 - WALL_T / 2, 0.6);
+    box(BX / 2 + WALL_T, WALL_H / 2, WALL_T / 2, 0, WALL_H / 2, BZ / 2 + WALL_T / 2, 0.6);
+    // the edges of the room, just past the screen, so nothing is lost
+    const fx = VW / 2 + 0.2, fz = VH / 2 + 0.2;
+    box(0.5, 10, fz + 1, -fx - 0.5, 10, 0);
+    box(0.5, 10, fz + 1, fx + 0.5, 10, 0);
+    box(fx + 1, 10, 0.5, 0, 10, -fz - 0.5);
+    box(fx + 1, 10, 0.5, 0, 10, fz + 0.5);
+    box(fx + 1, 0.5, fz + 1, 0, LIFT_H + 5, 0); // nothing flies into your face
   }
 
-  _spawnSpot(i, n) {
+  _spawnSpot(i) {
     const yaw = rand(0, Math.PI * 2);
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(-0.15, 0.15), yaw, rand(-0.15, 0.15)));
     return {
       t: {
-        x: clamp(gauss() * this.BX * 0.14, -this.BX * 0.3, this.BX * 0.3),
+        x: clamp(gauss() * this.BX * 0.14, -this.BX * 0.28, this.BX * 0.28),
         y: 0.8 + i * 0.5,
-        z: clamp(gauss() * this.BZ * 0.12, -this.BZ * 0.3, this.BZ * 0.3)
+        z: clamp(gauss() * this.BZ * 0.13, -this.BZ * 0.3, this.BZ * 0.3)
       },
       r: { x: q.x, y: q.y, z: q.z, w: q.w },
       v: { x: 0, y: -2, z: 0 },
@@ -279,11 +367,11 @@ export class Pile {
     };
   }
 
-  _dropSpot() {
+  _dropSpot(i = 0) {
     const yaw = rand(0, Math.PI * 2);
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(-0.5, 0.5), yaw, rand(-0.5, 0.5)));
     return {
-      t: { x: gauss() * this.BX * 0.12, y: WALL_H + 1.6, z: gauss() * this.BZ * 0.1 },
+      t: { x: gauss() * this.BX * 0.12, y: WALL_H + 1.4 + i * 0.6, z: gauss() * this.BZ * 0.1 },
       r: { x: q.x, y: q.y, z: q.z, w: q.w },
       v: { x: 0, y: -6, z: 0 },
       spin: true
@@ -293,9 +381,9 @@ export class Pile {
   _addPiece(look, at) {
     // size: every piece covers about the same amount of cloth, whatever the photo's framing
     const ratio = look.w / look.h;
-    const rectArea = 6.4 / look.opaqueFrac;
+    const rectArea = 5.4 / look.opaqueFrac;
     let uh = Math.sqrt(rectArea / ratio), uw = uh * ratio;
-    const maxSide = Math.min(3.4, this.BX * 0.78);
+    const maxSide = Math.min(3.2, this.BX * 0.74);
     const k = Math.min(1, maxSide / Math.max(uw, uh));
     uw *= k; uh *= k;
 
@@ -326,8 +414,8 @@ export class Pile {
     const desc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(at.t.x, at.t.y, at.t.z)
       .setRotation(at.r)
-      .setLinearDamping(0.6)
-      .setAngularDamping(1.6)
+      .setLinearDamping(0.35)
+      .setAngularDamping(1.5)
       .setCcdEnabled(true);
     const body = this.world.createRigidBody(desc);
 
@@ -367,7 +455,7 @@ export class Pile {
       }
     }
 
-    const piece = { look, item: look.item, mesh, mat, body, uw, uh, samples, cover: 0, shade: 1, shadeTarget: 1, hidden: false };
+    const piece = { look, item: look.item, mesh, mat, body, uw, uh, samples, cover: 0, shade: 1, shadeTarget: 1, hidden: false, tilted: 0 };
     mesh.userData.piece = piece;
     this._sync(piece);
     this.pieces.push(piece);
@@ -425,13 +513,18 @@ export class Pile {
         moving = true;
       }
     }
+    const d = this.drag;
+    if (d && d.lifted) {
+      const info = this.screenInfo(d.piece);
+      this.hooks.onHoldMove?.(d.piece, info.x, info.y - info.longest * 0.42);
+    }
     if (moving) this.coverDirty = true;
     if (this.coverDirty && now - this.coverAt > 280) {
       this.coverAt = now;
       this.coverDirty = false;
       this._computeCover();
     }
-    if (moving || this.drag || this.kick > 0) {
+    if (moving || d || this.kick > 0) {
       this.renderer.render(this.scene, this.camera);
       if (this.kick > 0) this.kick--;
     }
@@ -448,7 +541,7 @@ export class Pile {
       if (Math.abs(up.y) > 0.88) { p.tilted = 0; continue; }
       // a piece that dozed off while leaning on its edge gets woken to flop down,
       // but one wedged for good (about 4 s of trying) is left to rest
-      p.tilted = (p.tilted || 0) + 1;
+      p.tilted++;
       if (p.tilted > 240) continue;
       if (p.body.isSleeping()) p.body.wakeUp();
       const lv = p.body.linvel();
@@ -456,7 +549,6 @@ export class Pile {
       const s = up.y >= 0 ? 1 : -1; // fall to whichever face is nearer
       const m = p.body.mass() || 0.5;
       const k = 16 * m * STEP;
-      // torque along up × (0, s, 0)
       p.body.applyTorqueImpulse({ x: -up.z * s * k, y: 0, z: up.x * s * k }, true);
     }
   }
@@ -465,7 +557,8 @@ export class Pile {
   _hold() {
     const d = this.drag;
     if (!d || !d.lifted) return;
-    d.hand.y += (d.handY - d.hand.y) * 0.2;
+    d.hand.y += (d.handY - d.hand.y) * 0.16;
+    this._aim(d);
     const b = d.piece.body;
     const m = b.mass() || 0.5;
     const t = b.translation(), r = b.rotation();
@@ -522,8 +615,8 @@ export class Pile {
     const local = hit.point.clone().sub(new THREE.Vector3(t.x, t.y, t.z))
       .applyQuaternion(new THREE.Quaternion(r.x, r.y, r.z, r.w).invert());
     this.drag = {
-      id: e.pointerId, piece: hit.piece, local,
-      sx: e.clientX, sy: e.clientY, t0: performance.now(),
+      id: e.pointerId, piece: hit.piece, local, rect: this.canvas.getBoundingClientRect(),
+      sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, t0: performance.now(),
       lifted: false, hand: hit.point.clone(), handY: hit.point.y, trail: []
     };
     this.hooks.onTouch?.();
@@ -532,29 +625,37 @@ export class Pile {
   _move(e) {
     const d = this.drag;
     if (!d || e.pointerId !== d.id) return;
+    d.cx = e.clientX;
+    d.cy = e.clientY;
     if (!d.lifted) {
       if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 8) return;
       d.lifted = true;
       d.piece.body.wakeUp();
       d.piece.body.setAngularDamping(3.5);
-      // lift it clear of everything else so it drags whatever was on top along with it
-      let top = 0;
-      for (const p of this.pieces) if (p !== d.piece && !p.hidden) top = Math.max(top, p.body.translation().y);
-      d.handY = Math.min(WALL_H + 0.6, Math.max(d.hand.y + 1.3, top + 1.4));
+      d.piece.tilted = 0;
+      // pull it up out of the bag, toward you, so you can see what it is
+      d.handY = LIFT_H;
       d.piece.shadeTarget = 1;
       this.hooks.onLift?.(d.piece);
     }
-    this.raycaster.setFromCamera(this._ndc(e), this.camera);
-    this._plane.constant = -d.hand.y;
-    const at = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this._plane, at)) {
-      d.hand.x = clamp(at.x, -this.BX / 2 + 0.3, this.BX / 2 - 0.3);
-      d.hand.z = clamp(at.z, -this.BZ / 2 + 0.3, this.BZ / 2 - 0.3);
-    }
+    this._aim(d);
     const now = performance.now();
     d.trail.push({ x: d.hand.x, z: d.hand.z, t: now });
     while (d.trail.length > 2 && now - d.trail[0].t > 110) d.trail.shift();
     this.hooks.onTouch?.();
+  }
+
+  /** Put the hand under the finger, at the height it's holding the piece. */
+  _aim(d) {
+    const r = d.rect;
+    const ndc = new THREE.Vector2(((d.cx - r.left) / r.width) * 2 - 1, -((d.cy - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    this._plane.constant = -d.hand.y;
+    const at = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this._plane, at)) {
+      d.hand.x = clamp(at.x, -this.VW / 2 + 0.4, this.VW / 2 - 0.4);
+      d.hand.z = clamp(at.z, -this.VH / 2 + 0.4, this.VH / 2 - 0.4);
+    }
   }
 
   _up(e) {
@@ -564,14 +665,14 @@ export class Pile {
     const b = d.piece.body;
     b.resetForces(true);
     b.resetTorques(true);
-    b.setAngularDamping(1.6);
+    b.setAngularDamping(1.5);
     this.hooks.onTouch?.();
 
     if (!d.lifted) {
       if (e.type === 'pointerup' && performance.now() - d.t0 < 450) this.hooks.onTap?.(d.piece);
       return;
     }
-    // throw: keep the hand's speed, pop up toward you, tumble
+    // throw: keep the hand's speed, arc up a little, tumble
     let vx = 0, vz = 0;
     if (d.trail.length >= 2) {
       const a = d.trail[0], z = d.trail[d.trail.length - 1];
@@ -582,13 +683,13 @@ export class Pile {
     const speed = Math.hypot(vx, vz);
     if (speed > 2.5) {
       const lv = b.linvel();
-      const s = Math.min(1, 26 / speed);
-      b.setLinvel({ x: lv.x * 0.3 + vx * s * 0.8, y: lv.y * 0.3 + Math.min(9, speed * 0.42), z: lv.z * 0.3 + vz * s * 0.8 }, true);
-      const spin = Math.min(11, speed * 0.75);
-      b.setAngvel({ x: vz / (speed || 1) * spin + rand(-1, 1), y: rand(-2, 2), z: -vx / (speed || 1) * spin + rand(-1, 1) }, true);
-      this.hooks.onThrow?.(speed);
+      const s = Math.min(1, 20 / speed);
+      b.setLinvel({ x: lv.x * 0.25 + vx * s * 0.95, y: lv.y * 0.3 + Math.min(7, 2 + speed * 0.3), z: lv.z * 0.25 + vz * s * 0.95 }, true);
+      const spin = Math.min(12, speed * 0.8);
+      b.setAngvel({ x: vz / (speed || 1) * spin + rand(-1, 1), y: rand(-2.5, 2.5), z: -vx / (speed || 1) * spin + rand(-1, 1) }, true);
     }
-    this.kick = Math.max(this.kick, 30);
+    this.hooks.onRelease?.(d.piece, speed);
+    this.kick = Math.max(this.kick, 40);
   }
 
   // ---------- what the app can do to the pile ----------
@@ -619,23 +720,37 @@ export class Pile {
     this.coverDirty = true;
   }
 
-  /** Toss a piece back in: it drops from just below the mouth of the bag. */
-  dropBack(p) {
-    const at = this._dropSpot();
+  /** Toss a piece back in: it drops into the bag from just above the mouth. */
+  dropBack(p, i = 0) {
+    const at = this._dropSpot(i);
     p.body.setEnabled(true);
     p.body.setTranslation(at.t, true);
     p.body.setRotation(at.r, true);
     p.body.setLinvel(at.v, true);
     p.body.setAngvel({ x: rand(-2, 2), y: rand(-1, 1), z: rand(-2, 2) }, true);
     p.hidden = false;
+    p.tilted = 0;
     p.mesh.visible = true;
     this._sync(p);
     this.kick = Math.max(this.kick, 60);
+    this.coverDirty = true;
+  }
+
+  /** Gather everything off the floor and tip it back into the bag. */
+  refill() {
+    let i = 0;
+    for (const p of this.pieces) {
+      if (p.hidden || this.inBag(p)) continue;
+      this.dropBack(p, i++);
+    }
+    this.kick = Math.max(this.kick, 90);
+    return i;
   }
 
   add(look) {
     const p = this._addPiece(look, this._dropSpot());
     this.kick = Math.max(this.kick, 60);
+    this.coverDirty = true;
     return p;
   }
 
@@ -646,12 +761,14 @@ export class Pile {
     this.coverDirty = true;
   }
 
+  /** Shake the bag: everything inside jumps and lands in a new order. */
   shake() {
     for (const p of this.pieces) {
-      if (p.hidden) continue;
+      if (p.hidden || !this.inBag(p)) continue;
       const m = p.body.mass() || 0.5;
       p.body.wakeUp();
-      p.body.applyImpulse({ x: rand(-3, 3) * m, y: rand(8, 13) * m, z: rand(-4, 4) * m }, true);
+      p.tilted = 0;
+      p.body.applyImpulse({ x: rand(-2.2, 2.2) * m, y: rand(7, 11) * m, z: rand(-3, 3) * m }, true);
       p.body.applyTorqueImpulse({ x: rand(-1, 1) * m * 3, y: rand(-1, 1) * m * 1.5, z: rand(-1, 1) * m * 3 }, true);
     }
     this.kick = Math.max(this.kick, 60);
@@ -672,7 +789,7 @@ export class Pile {
   /** How hidden each piece is (0 = in plain sight, 1 = completely under other things). */
   _computeCover() {
     const meshes = this._meshes();
-    if (!meshes.length) return;
+    if (!meshes.length) { this._reportCounts(); return; }
     this.scene.updateMatrixWorld();
     const cam = this.camera.position;
     const dir = new THREE.Vector3();
@@ -693,9 +810,22 @@ export class Pile {
       this.raycaster.far = Infinity;
       p.cover = n ? 1 - seen / n : 0;
       const held = this.drag && this.drag.piece === p && this.drag.lifted;
-      p.shadeTarget = held ? 1 : 1 - 0.55 * p.cover;
+      // deep in the bag is darker; out on the floor is in full light
+      const y = p.body.translation().y;
+      const depth = this.inBag(p) ? 0.8 + 0.2 * clamp(y / 1.4, 0, 1) : 1;
+      p.shadeTarget = held ? 1 : depth * (1 - 0.5 * p.cover);
     }
     const target = this.targetId && this.find(this.targetId);
-    if (target && !target.hidden) this.hooks.onCover?.(target.cover, target);
+    if (target && !target.hidden) this.hooks.onCover?.(target.cover, target, this.inBag(target));
+    this._reportCounts();
+  }
+
+  _reportCounts() {
+    const inside = this.inBagCount, out = this.count - inside;
+    const key = inside + '/' + out;
+    if (key !== this.counts) {
+      this.counts = key;
+      this.hooks.onCount?.(inside, out);
+    }
   }
 }

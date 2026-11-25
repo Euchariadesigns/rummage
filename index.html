@@ -56,12 +56,13 @@
         </button>
       </header>
 
-      <div class="rim weave" id="rim">
+      <div class="rim" id="rim">
         <div class="stage" id="stage">
-          <canvas class="pile-canvas" id="pileCanvas" aria-label="The pile inside the bag"></canvas>
+          <canvas class="pile-canvas" id="pileCanvas" aria-label="The bag on the floor, full of clothes"></canvas>
+          <div class="held-tag" id="heldTag" hidden></div>
           <div class="stage-loading" id="stageLoading" hidden>Opening the bag…</div>
           <div class="gesture-hint" id="gestureHint" hidden>
-            <span>Drag to dig</span><i></i><span>Flick to throw</span><i></i><span>Tap to pick up</span>
+            <span>Pull a piece up</span><i></i><span>Fling it out</span><i></i><span>Tap to look</span>
           </div>
         </div>
       </div>
@@ -83,7 +84,7 @@
         </button>
         <button class="shake-btn" id="shakeBtn" type="button" aria-label="Shake the bag">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9h12l-1.2 10.2a1.5 1.5 0 0 1-1.5 1.3H8.7a1.5 1.5 0 0 1-1.5-1.3L6 9Z"/><path d="M9 9V7a3 3 0 0 1 6 0v2"/><path d="M2.5 11.5 1.5 15M21.5 11.5l1 3.5"/></svg>
-          <span>Shake</span>
+          <span id="shakeLabel">Shake</span>
         </button>
       </div>
     </section>

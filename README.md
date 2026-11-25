@@ -6,12 +6,12 @@ A search with no search bar. You find things the way you would at home: open a b
 
 ## How it works
 
-- **Bags are categories.** Pick a bag and you look down into it, onto a real pile.
-- **Drag to dig.** Pinch a piece anywhere and it lifts out, hanging from where you hold it. Whatever was on top of it slides off.
-- **Flick to throw.** Let go mid-swipe and the piece flies up toward you, tumbles and falls back onto the pile.
-- **Tap to pick up.** The piece lifts out so you can look at it. Keep it or toss it back in.
-- **Looking for something.** The card at the bottom names one piece hidden in the pile. Its meter goes from *Buried deep* to *Right on top* as you uncover it. Leave the pile alone for a few seconds and the piece rustles under the others. Tap the card to look for something else.
-- **Shake** the bag and everything jumps and lands in a new order.
+- **Bags are categories.** Pick a bag and you look down at it, sitting on the floor, full of clothes.
+- **Pull a piece up.** Pinch it anywhere and it rises out of the bag toward you, hanging from where you hold it, with its name above it. Whatever was lying on it slides off.
+- **Fling it out.** Swipe and let go: it flies over the side and lands on the floor next to the bag. The bag gets emptier, you get deeper. You can dig through the floor pile too.
+- **Tap to look.** The piece lifts out so you can see it properly. Keep it or toss it back in.
+- **Looking for something.** The card at the bottom names one piece hidden in the pile. Its meter goes from *Buried deep* to *Right on top* as you uncover it. Pull it out and let go gently, and it opens for a proper look. Leave the pile alone for a few seconds and it rustles under the others. Tap the card to look for something else.
+- **Shake** the bag and everything inside jumps and lands in a new order. When the bag is nearly empty, the button becomes **Refill** and tips everything on the floor back in.
 
 Buried pieces sit in shadow and come out of the dark as you uncover them. The pile uses real physics: [three.js](https://threejs.org) draws it and [Rapier](https://rapier.rs) moves it.
 

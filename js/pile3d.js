@@ -293,7 +293,7 @@ export class Pile {
   _addPiece(look, at) {
     // size: every piece covers about the same amount of cloth, whatever the photo's framing
     const ratio = look.w / look.h;
-    const rectArea = 5.6 / look.opaqueFrac;
+    const rectArea = 6.4 / look.opaqueFrac;
     let uh = Math.sqrt(rectArea / ratio), uw = uh * ratio;
     const maxSide = Math.min(3.4, this.BX * 0.78);
     const k = Math.min(1, maxSide / Math.max(uw, uh));
@@ -441,16 +441,21 @@ export class Pile {
   _flop() {
     const held = this.drag && this.drag.lifted ? this.drag.piece : null;
     for (const p of this.pieces) {
-      if (p.hidden || p === held || p.body.isSleeping()) continue;
-      const lv = p.body.linvel();
-      if (Math.hypot(lv.x, lv.y, lv.z) > 3.5) continue; // still flying: let it tumble
+      if (p.hidden || p === held) continue;
       const r = p.body.rotation();
       this._tmpQ.set(r.x, r.y, r.z, r.w);
       const up = this._tmpV.set(0, 1, 0).applyQuaternion(this._tmpQ);
-      if (Math.abs(up.y) > 0.88) continue;
+      if (Math.abs(up.y) > 0.88) { p.tilted = 0; continue; }
+      // a piece that dozed off while leaning on its edge gets woken to flop down,
+      // but one wedged for good (about 4 s of trying) is left to rest
+      p.tilted = (p.tilted || 0) + 1;
+      if (p.tilted > 240) continue;
+      if (p.body.isSleeping()) p.body.wakeUp();
+      const lv = p.body.linvel();
+      if (Math.hypot(lv.x, lv.y, lv.z) > 3.5) continue; // still flying: let it tumble
       const s = up.y >= 0 ? 1 : -1; // fall to whichever face is nearer
       const m = p.body.mass() || 0.5;
-      const k = 10 * m * STEP;
+      const k = 16 * m * STEP;
       // torque along up × (0, s, 0)
       p.body.applyTorqueImpulse({ x: -up.z * s * k, y: 0, z: up.x * s * k }, true);
     }

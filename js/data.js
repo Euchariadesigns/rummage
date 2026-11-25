@@ -5,7 +5,7 @@ window.RUMMAGE_DATA = {
     {
       id: 'everyday',
       name: 'Everyday',
-      blurb: 'tees, denim, socks',
+      blurb: 'tees, shirts, denim, dresses',
       interior: '#172038',
       thread: '#D8457F',
       weave: [
@@ -31,7 +31,7 @@ window.RUMMAGE_DATA = {
     {
       id: 'fabrics',
       name: 'Fabrics',
-      blurb: 'wax prints, lace, headwraps',
+      blurb: 'prints, lace, tie-dye',
       interior: '#14251C',
       thread: '#E8742A',
       weave: [
@@ -54,9 +54,9 @@ window.RUMMAGE_DATA = {
       ]
     },
     {
-      id: 'occasion',
-      name: 'Occasion',
-      blurb: 'dresses, kaftans, gele',
+      id: 'outerwear',
+      name: 'Outerwear',
+      blurb: 'jackets, boots, sneakers',
       interior: '#21182E',
       thread: '#1C9C9A',
       weave: [

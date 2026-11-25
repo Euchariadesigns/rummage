@@ -2,12 +2,15 @@
 """Turn photos of clothes into cutouts the pile can use.
 
 Put photos in photos/ (any of .jpg .jpeg .heic .png). A subfolder named after a bag
-(everyday, fabrics, occasion) puts the piece in that bag; anything else goes to "everyday".
+(everyday, fabrics, outerwear) puts the piece in that bag; anything else goes to "everyday".
+The file name becomes the piece's name ("Plaid shirt.jpg" → "Plaid shirt"); camera names
+like IMG_1234 become "Piece N".
 
     python3 tools/prepare_photos.py
 
 For each new photo this:
-  1. lifts the piece off the floor with macOS subject lifting (tools/cutout.swift),
+  1. lifts the piece off the floor with macOS subject lifting (tools/cutout.swift);
+     a PNG that already has a transparent background is used as it is,
   2. shrinks it to 900 px and saves a transparent WebP in assets/clothes/,
   3. adds it to assets/clothes/clothes.json (edit names/bags there; reruns keep your edits),
   4. rewrites assets/clothes/manifest.js, which the app loads.
@@ -25,7 +28,9 @@ OUT = ROOT / "assets" / "clothes"
 CACHE = ROOT / ".cache"
 CATALOG = OUT / "clothes.json"
 MANIFEST = OUT / "manifest.js"
-BAGS = {"everyday", "fabrics", "occasion"}
+BAGS = {"everyday", "fabrics", "outerwear", "occasion"}
+CAMERA_NAME = re.compile(r"^(img|dsc|pxl|photo|pexels)[-_ ]?\d", re.I)
+ALPHA_FORMATS = {"rgba", "ya8", "rgba64be", "rgba64le", "ya16be", "ya16le"}
 EXTS = {".jpg", ".jpeg", ".heic", ".png"}
 MAX_SIDE = 900
 
@@ -42,6 +47,22 @@ def build_cutout_tool():
         print("Building the cutout tool (once)…")
         subprocess.run(["swiftc", "-O", str(source), "-o", str(binary)], check=True)
     return binary
+
+
+def has_alpha(path):
+    if path.suffix.lower() != ".png":
+        return False
+    fmt = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=pix_fmt", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True).stdout.strip()
+    return fmt in ALPHA_FORMATS
+
+
+def piece_name(stem, number):
+    if CAMERA_NAME.match(stem):
+        return f"Piece {number}"
+    name = re.sub(r"_+", " ", stem).strip()
+    return name[:1].upper() + name[1:] if name else f"Piece {number}"
 
 
 def image_size(path):
@@ -79,15 +100,16 @@ def main():
         todo.append((photo, rel, bag, pid))
 
     if todo:
-        tool = build_cutout_tool()
         with tempfile.TemporaryDirectory() as tmp:
             args = []
             for photo, _, _, pid in todo:
-                args += [str(photo), str(Path(tmp) / f"{pid}.png")]
-            result = subprocess.run([str(tool), *args], capture_output=True, text=True)
-            print(result.stdout.strip())
+                if not has_alpha(photo):
+                    args += [str(photo), str(Path(tmp) / f"{pid}.png")]
+            if args:
+                result = subprocess.run([str(build_cutout_tool()), *args], capture_output=True, text=True)
+                print(result.stdout.strip())
             for photo, rel, bag, pid in todo:
-                cut = Path(tmp) / f"{pid}.png"
+                cut = photo if has_alpha(photo) else Path(tmp) / f"{pid}.png"
                 if not cut.exists():
                     print(f"  skipped {rel}: no piece found in the photo")
                     continue
@@ -100,7 +122,7 @@ def main():
                 number = len(catalog) + 1
                 catalog.append({
                     "id": pid, "source": rel, "file": f"assets/clothes/{pid}.webp",
-                    "w": w, "h": h, "name": f"Piece {number}", "bag": bag, "fabric": "", "size": ""})
+                    "w": w, "h": h, "name": piece_name(photo.stem, number), "bag": bag, "fabric": "", "size": ""})
                 print(f"  added {rel} → {dest.name} ({w}×{h}, {bag})")
 
     # Drop entries whose cutout was deleted

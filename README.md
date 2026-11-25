@@ -15,16 +15,20 @@ A search with no search bar. You find things the way you would at home: open a b
 
 Buried pieces sit in shadow and come out of the dark as you uncover them. The pile uses real physics: [three.js](https://threejs.org) draws it and [Rapier](https://rapier.rs) moves it.
 
-## Adding your own clothes
+## The clothes
 
-1. Photograph each piece from above, on the floor, one piece per photo. A floor that contrasts with the piece helps.
-2. Put the photos in `photos/`. A subfolder named `everyday`, `fabrics` or `occasion` puts the piece in that bag.
+The 27 pieces in the three bags (Everyday, Fabrics, Outerwear) are cut out of free photos from [Pexels](https://www.pexels.com). [assets/clothes/CREDITS.md](assets/clothes/CREDITS.md) lists the photo behind each one.
+
+## Adding clothes
+
+1. Photograph each piece from above, on the floor. One piece per photo, or several laid apart so they don't touch. A floor that contrasts with the clothes helps.
+2. Put the photos in `photos/`. A subfolder named `everyday`, `fabrics` or `outerwear` puts the piece in that bag. The file name becomes the piece's name.
 3. Run `python3 tools/prepare_photos.py` (macOS). It cuts each piece out of its photo with the Mac's built-in subject lifting, shrinks it for phones and adds it to `assets/clothes/`.
-4. Name the pieces in `assets/clothes/clothes.json`, then run the script again.
+4. Rename pieces or move them between bags in `assets/clothes/clothes.json`, then run the script again.
 
-Your original photos stay in `photos/`, which is never committed. Only the cut-out pieces are published.
+To split one photo of several pieces into separate pieces, run `.cache/cutout --split <photo> <name>` first and put the results in `photos/`.
 
-Until there are photos, the bags use sample drawings.
+Original photos stay in `photos/`, which is never committed. Only the cut-out pieces are published. With no photos at all, the bags fall back to sample drawings.
 
 ## Run it locally
 

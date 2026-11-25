@@ -189,7 +189,7 @@ svg { display: block; }
   width: 92px; height: 92px;
   transition: transform .5s var(--spring);
 }
-.peek svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
+.peek svg, .peek img { width: 100%; height: 100%; object-fit: contain; overflow: visible; filter: drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
 .peek-0 { left: 14%; top: 14px; transform: rotate(-16deg); }
 .peek-1 { left: 41%; top: 4px; transform: rotate(7deg); }
 .peek-2 { left: 66%; top: 18px; transform: rotate(22deg); }
@@ -359,7 +359,7 @@ svg { display: block; }
           mask: repeating-linear-gradient(180deg, #000 0 1.5px, transparent 1.5px 4px);
   pointer-events: none;
 }
-.stage.shaking { animation: shake .48s var(--ease); }
+.rim.shaking { animation: shake .48s var(--ease); }
 @keyframes shake {
   0%, 100% { transform: none; }
   15% { transform: translate(-7px, 2px) rotate(-.8deg); }
@@ -368,20 +368,29 @@ svg { display: block; }
   75% { transform: translate(3px, -1px); }
 }
 
-.pieces { position: absolute; inset: 0; z-index: 0; }
-.piece {
+.pile-canvas {
   position: absolute;
-  left: 0; top: 0;
-  pointer-events: none;
-  will-change: transform;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
 }
-.piece .lift { width: 100%; height: 100%; transition: transform .22s var(--ease), filter .22s var(--ease); }
-.piece svg { width: 100%; height: 100%; overflow: visible; transform-origin: 50% 50%; }
-.piece .hit { pointer-events: fill; cursor: grab; }
-.piece .dp { transition: fill-opacity .3s ease; }
-.piece.lifted .lift { transform: scale(1.07); filter: drop-shadow(0 18px 16px rgba(0,0,0,.42)); }
-.piece.lifted .sh { opacity: 0; }
-.piece.lifted .hit { cursor: grabbing; }
+.pile-canvas:active { cursor: grabbing; }
+.stage-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  color: rgba(243, 242, 238, .8);
+  font: 500 12px/1 var(--f-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  background: var(--interior, #172038);
+}
 
 .gesture-hint {
   position: absolute;
@@ -432,7 +441,7 @@ svg { display: block; }
   background: var(--surface-2);
   overflow: hidden;
 }
-.target-thumb svg { width: 44px; height: 44px; overflow: visible; }
+.target-thumb svg, .target-thumb img { width: 44px; height: 44px; object-fit: contain; overflow: visible; }
 .target-text { display: grid; gap: 3px; min-width: 0; }
 .target-text small {
   font: 500 10.5px/1 var(--f-mono);
@@ -507,8 +516,10 @@ svg { display: block; }
   pointer-events: none;
 }
 .inspect-art { width: min(68vw, 300px, 38vh); aspect-ratio: 1; max-width: 100%; }
-.inspect-art svg {
+.inspect-art svg, .inspect-art img {
+  display: block;
   width: 100%; height: 100%;
+  object-fit: contain;
   overflow: visible;
   filter: drop-shadow(0 26px 24px rgba(0,0,0,.35));
   animation: sway 5s ease-in-out infinite;
@@ -542,9 +553,9 @@ svg { display: block; }
   text-wrap: balance;
 }
 .specs {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr auto;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
   margin: 0 0 18px;
   padding: 14px 0 0;
   border-top: 1px solid var(--line);
@@ -628,7 +639,7 @@ svg { display: block; }
 }
 .basket-list li:first-child { border-top: 0; }
 .basket-list .thumb { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 14px; background: var(--surface-2); }
-.basket-list .thumb svg { width: 46px; height: 46px; overflow: visible; }
+.basket-list .thumb svg, .basket-list .thumb img { width: 46px; height: 46px; object-fit: contain; overflow: visible; }
 .basket-list span { display: grid; gap: 2px; min-width: 0; }
 .basket-list strong { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .basket-list small { color: var(--ink-2); font-size: 13px; }

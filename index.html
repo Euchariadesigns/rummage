@@ -36,7 +36,7 @@
       </div>
       <ul class="bags" id="bags"></ul>
 
-      <p class="fineprint">Prototype · sample wardrobe</p>
+      <p class="fineprint" id="fineprint">Prototype</p>
     </section>
 
     <!-- Pile: inside one bag -->
@@ -57,9 +57,10 @@
 
       <div class="rim weave" id="rim">
         <div class="stage" id="stage">
-          <div class="pieces" id="pieces"></div>
+          <canvas class="pile-canvas" id="pileCanvas" aria-label="The pile inside the bag"></canvas>
+          <div class="stage-loading" id="stageLoading" hidden>Opening the bag…</div>
           <div class="gesture-hint" id="gestureHint" hidden>
-            <span>Drag to dig</span><i></i><span>Flick to toss</span><i></i><span>Tap to pick up</span>
+            <span>Drag to dig</span><i></i><span>Flick to throw</span><i></i><span>Tap to pick up</span>
           </div>
         </div>
       </div>
@@ -121,8 +122,17 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "rapier": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+      }
+    }
+  </script>
   <script src="js/data.js"></script>
   <script src="js/garments.js"></script>
-  <script src="js/app.js"></script>
+  <script src="assets/clothes/manifest.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

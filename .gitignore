@@ -20,3 +20,7 @@ credentials*.json
 *.mov
 *.mp4
 *.m4v
+
+# Raw photos of clothes stay local; only the cut-out pieces in assets/clothes/ are published
+photos/
+.cache/

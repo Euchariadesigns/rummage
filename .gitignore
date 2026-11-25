@@ -1,0 +1,22 @@
+# OS clutter
+.DS_Store
+Thumbs.db
+
+# Dependencies and builds (if any get added later)
+node_modules/
+dist/
+.cache/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+credentials*.json
+
+# Reference footage stays local (personal + too large for the repo)
+*.MOV
+*.mov
+*.mp4
+*.m4v

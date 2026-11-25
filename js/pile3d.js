@@ -16,8 +16,8 @@ const RES = 16;              // cloth cells along a piece's longest side
 const TILT = 0.42;           // camera tilt from straight down, radians
 const FOV = 34;
 const BAG_W = 4.2;           // bag width; its length follows the screen
-const SIDE = 2.1;            // floor beside the bag, left and right
-const ENDS = 2.2;            // floor beyond the bag, top and bottom
+const SIDE = 0.95;           // floor beside the bag, left and right
+const ENDS = 1.05;           // floor beyond the bag, top and bottom
 const ALPHA_CUT = 115;
 
 export function prepare() { return Promise.resolve(); }
@@ -306,7 +306,7 @@ export class Pile {
     const w = this.canvas.clientWidth || 360, h = this.canvas.clientHeight || 640;
     const aspect = w / h;
     this.VW = BAG_W + SIDE * 2;
-    this.VH = this.VW / aspect / Math.cos(TILT) * 0.94;
+    this.VH = this.VW / aspect / Math.cos(TILT) * 1.08;
     this.BX = BAG_W;
     this.BZ = clamp(this.VH - ENDS * 2, 4.2, 11);
     this.iX = this.BX / 2; this.iZ = this.BZ / 2;
@@ -383,7 +383,9 @@ export class Pile {
   _fitCamera() {
     const pts = [];
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      pts.push(new THREE.Vector3(sx * this.VW / 2, 0, sz * this.VH / 2));
+      // the floor nearest you looks biggest under the tilt, so frame it tighter on that side
+      const fz = sz > 0 ? this.oZ + 0.55 : this.VH / 2;
+      pts.push(new THREE.Vector3(sx * this.VW / 2, 0, sz * fz));
       pts.push(new THREE.Vector3(sx * (this.oX + 0.15), WALL_H + 0.1, sz * (this.oZ + 0.15)));
     }
     const dir = new THREE.Vector3(0, Math.cos(TILT), Math.sin(TILT));
@@ -648,7 +650,7 @@ export class Pile {
 
   _makeCloth(look) {
     const ratio = look.w / look.h;
-    const rectArea = 5.2 / look.opaqueFrac;
+    const rectArea = 5.8 / look.opaqueFrac;
     let uh = Math.sqrt(rectArea / ratio), uw = uh * ratio;
     const k = Math.min(1, Math.min(3.1, this.BX * 0.74) / Math.max(uw, uh));
     uw *= k; uh *= k;
@@ -779,7 +781,8 @@ export class Pile {
       if (q === c || q.hidden || q.held || q.order >= c.order) continue;
       if (q.bb[0] < c.bb[1] + 1 && q.bb[1] > c.bb[0] - 1 && q.bb[2] < c.bb[3] + 1 && q.bb[3] > c.bb[2] - 1) c.below.push(q);
     }
-    const fx = this.VW / 2, fz = this.VH / 2, ceil = LIFT_H + 3;
+    // the room's edges sit just past the screen: thrown clothes land at the edge, partly in view
+    const fx = this.VW / 2 + 0.3, fz = this.VH / 2 + 0.3, ceil = LIFT_H + 3;
     const hang = this.hang || this._v.set(0, -1, 0);
     const gx = holding ? hang.x * 17 : 0, gy = holding ? hang.y * 17 : GRAVITY, gz = holding ? hang.z * 17 : 0;
     let maxV = 0;
